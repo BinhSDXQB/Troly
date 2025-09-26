@@ -1,194 +1,190 @@
 import streamlit as st
 import requests
 import uuid
-import re
+import json
 
-# Hàm đọc nội dung từ file văn bản
-def rfile(name_file):
-    try:
-        with open(name_file, "r", encoding="utf-8") as file:
-            return file.read()
-    except FileNotFoundError:
-        st.error(f"File {name_file} không tồn tại.")
-        return ""
-
-def generate_session_id():
-    return str(uuid.uuid4())
-
-def send_message_to_llm(session_id, message):
-    # Lấy config từ secrets
-    try:
-        bearer_token = st.secrets.get("BEARER_TOKEN", "")
-        webhook_url = st.secrets.get("WEBHOOK_URL", "")
-        
-        # Nếu không có trong secrets, thử đọc từ file
-        if not webhook_url:
-            webhook_url = rfile("WEBHOOK_URL.txt").strip()
-        
+def debug_request():
+    """Debug chi tiết request để xác định nguyên nhân 403"""
+    
+    st.header("🔍 Debug 403 Forbidden Error")
+    
+    # Cấu hình
+    bearer_token = st.text_input("BEARER_TOKEN:", type="password", help="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjN2FiMTU0ZS02NWZjLTQzYTQtYjM2OS04MjhiMTE5Njk4MWMiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU3OTI3NzIxLCJleHAiOjE3NjA0NjEyMDB9.FRkdwfFLF-Syc-QiBScOgQu2QT20P4kCQjX9kFtlrks")
+    webhook_url = st.text_input("WEBHOOK_URL:", value="https://sxdqt.com.vn/webhook/5e7bc971-122a-4d85-9bbd-34b5cf75104d-6868")
+    
+    if st.button("🔍 Debug Request"):
         if not bearer_token:
-            return "Error: BEARER_TOKEN không được cấu hình", None
-        
-        if not webhook_url:
-            return "Error: WEBHOOK_URL không được cấu hình", None
+            st.error("❌ Vui lòng nhập BEARER_TOKEN")
+            return
             
-    except Exception as e:
-        return f"Error: Lỗi đọc cấu hình - {str(e)}", None
-    
-    headers = {
-        "Authorization": f"Bearer {bearer_token}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "sessionId": session_id,
-        "chatInput": message
-    }
-    
-    try:
-        response = requests.post(webhook_url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        response_data = response.json()
+        st.write("---")
+        st.subheader("📋 Thông tin Request")
         
-        # Xử lý response
-        try:
-            content = response_data.get("content") or response_data.get("output")
-            image_url = response_data.get('url', None)
-            return content, image_url
-        except:
-            content = response_data[0].get("content") or response_data[0].get("output")
-            image_url = response_data[0].get('url', None)
-            return content, image_url
-            
-    except requests.exceptions.RequestException as e:
-        return f"Error: Failed to connect to the LLM - {str(e)}", None
-
-def main():
-    st.set_page_config(page_title="Trợ lý AI", page_icon="🤖", layout="centered")
-    
-    # CSS styling
-    st.markdown(
-        """
-        <style>
-            .assistant {
-                padding: 10px;
-                border-radius: 10px;
-                max-width: 75%;
-                background: none;
-                text-align: left;
-                margin-bottom: 10px;
-            }
-            .user {
-                padding: 10px;
-                border-radius: 10px;
-                max-width: 75%;
-                background: none;
-                text-align: right;
-                margin-left: auto;
-                margin-bottom: 10px;
-            }
-            .assistant::before { content: "🤖 "; font-weight: bold; }
-            .user::before { content: " "; font-weight: bold; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    
-    # Debug panel
-    with st.sidebar:
-        st.header("🔧 Debug Info")
+        # Hiển thị thông tin request
+        headers = {
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Streamlit-Debug/1.0"
+        }
         
-        # Kiểm tra secrets
-        bearer_token = st.secrets.get("BEARER_TOKEN", "")
-        webhook_url = st.secrets.get("WEBHOOK_URL", "") or rfile("WEBHOOK_URL.txt").strip()
+        payload = {
+            "sessionId": str(uuid.uuid4()),
+            "chatInput": "test message"
+        }
         
-        if bearer_token:
-            st.success("✅ BEARER_TOKEN: OK")
-        else:
-            st.error("❌ BEARER_TOKEN: Missing")
-        
-        if webhook_url:
-            st.success("✅ WEBHOOK_URL: OK")
-            st.text(webhook_url)
-        else:
-            st.error("❌ WEBHOOK_URL: Missing")
-        
-        # Test connection button
-        if st.button("Test Connection"):
-            if bearer_token and webhook_url:
-                test_response, _ = send_message_to_llm(generate_session_id(), "test")
-                if "Error" in test_response:
-                    st.error(f"❌ {test_response}")
-                else:
-                    st.success("✅ Connection OK")
-            else:
-                st.error("❌ Missing configuration")
-    
-    # Đọc tiêu đề từ file
-    title_content = rfile("00.xinchao.txt")
-    if not title_content:
-        title_content = "Trợ lý AI"
-
-    st.markdown(
-        f"""<h1 style="text-align: center; font-size: 24px;">{title_content}</h1>""",
-        unsafe_allow_html=True
-    )
-
-    # Khởi tạo session state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = generate_session_id()
-
-    # Hiển thị lịch sử tin nhắn
-    for message in st.session_state.messages:
-        if message["role"] == "assistant":
-            st.markdown(f'<div class="assistant">{message["content"]}</div>', unsafe_allow_html=True)
-            if "image_url" in message and message["image_url"]:
-                st.markdown(
-                    f"""
-                    <a href="{message['image_url']}" target="_blank">
-                        <img src="{message['image_url']}" alt="Biểu đồ" style="width: 100%; height: auto; margin-bottom: 10px;">
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
-        elif message["role"] == "user":
-            st.markdown(f'<div class="user">{message["content"]}</div>', unsafe_allow_html=True)
-
-    # Ô nhập liệu
-    if prompt := st.chat_input("Nhập nội dung cần trao đổi ở đây nhé?"):
-        # Thêm tin nhắn user
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
-        
-        # Gửi request tới LLM
-        with st.spinner("Đang chờ phản hồi từ AI..."):
-            llm_response, image_url = send_message_to_llm(st.session_state.session_id, prompt)
-    
-        # Hiển thị response
-        if isinstance(llm_response, str) and "Error" in llm_response:
-            st.error(llm_response)
-        else:
-            st.markdown(f'<div class="assistant">{llm_response}</div>', unsafe_allow_html=True)
-            
-            if image_url:
-                st.markdown(
-                    f"""
-                    <a href="{image_url}" target="_blank">
-                        <img src="{image_url}" alt="Biểu đồ" style="width: 100%; height: auto; margin-bottom: 10px;">
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
-        
-        # Thêm response vào lịch sử
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": llm_response,
-            "image_url": image_url
+        st.write("**Headers:**")
+        st.json({
+            "Authorization": f"Bearer {bearer_token[:10]}...{bearer_token[-5:] if len(bearer_token) > 15 else bearer_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Streamlit-Debug/1.0"
         })
         
-        st.rerun()
+        st.write("**Payload:**")
+        st.json(payload)
+        
+        st.write("**URL:**")
+        st.code(webhook_url)
+        
+        st.write("---")
+        st.subheader("🚀 Gửi Request")
+        
+        try:
+            with st.spinner("Đang gửi request..."):
+                response = requests.post(
+                    webhook_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=30
+                )
+            
+            st.write(f"**Status Code:** {response.status_code}")
+            
+            if response.status_code == 403:
+                st.error("❌ 403 Forbidden - Server từ chối truy cập")
+                
+                # Phân tích nguyên nhân
+                st.write("**Các nguyên nhân có thể:**")
+                st.write("1. 🔑 Bearer Token không hợp lệ hoặc hết hạn")
+                st.write("2. 🚫 IP bị chặn hoặc không được whitelist")
+                st.write("3. 📝 Format request không đúng")
+                st.write("4. ⏰ Token có time-based restrictions")
+                st.write("5. 🌐 CORS hoặc referrer policy")
+                
+            elif response.status_code == 200:
+                st.success("✅ Request thành công!")
+                try:
+                    response_data = response.json()
+                    st.json(response_data)
+                except:
+                    st.text(response.text)
+            else:
+                st.warning(f"⚠️ HTTP {response.status_code}")
+            
+            # Headers của response
+            st.write("**Response Headers:**")
+            st.json(dict(response.headers))
+            
+            # Body của response (nếu có)
+            if response.text:
+                st.write("**Response Body:**")
+                try:
+                    response_json = response.json()
+                    st.json(response_json)
+                except:
+                    st.text(response.text[:1000] + "..." if len(response.text) > 1000 else response.text)
+                    
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ Request Error: {str(e)}")
+            
+    st.write("---")
+    st.subheader("🛠️ Các cách khắc phục")
+    
+    with st.expander("1. Kiểm tra Bearer Token"):
+        st.write("""
+        - Token có đúng format không? (thường bắt đầu bằng các tiền tố như `sk-`, `bearer_`, etc.)
+        - Token còn hạn sử dụng không?
+        - Token có quyền truy cập endpoint này không?
+        - Thử generate token mới từ dashboard
+        """)
+    
+    with st.expander("2. Thử các Header khác"):
+        if st.button("Test với headers khác nhau"):
+            test_headers = [
+                {"Authorization": f"Bearer {bearer_token}", "Content-Type": "application/json"},
+                {"Authorization": bearer_token, "Content-Type": "application/json"},  # Không có "Bearer "
+                {"X-API-Key": bearer_token, "Content-Type": "application/json"},  # API Key header
+                {"Authorization": f"Token {bearer_token}", "Content-Type": "application/json"},  # Token thay Bearer
+            ]
+            
+            for i, test_header in enumerate(test_headers):
+                st.write(f"**Test {i+1}:** {test_header}")
+                try:
+                    resp = requests.post(webhook_url, json=payload, headers=test_header, timeout=10)
+                    st.write(f"Status: {resp.status_code}")
+                    if resp.status_code != 403:
+                        st.success(f"✅ Header {i+1} hoạt động!")
+                        break
+                except Exception as e:
+                    st.write(f"Error: {e}")
+    
+    with st.expander("3. Test với payload khác"):
+        st.write("Thử các format payload khác nhau:")
+        
+        test_payloads = [
+            {"sessionId": str(uuid.uuid4()), "chatInput": "test"},
+            {"session_id": str(uuid.uuid4()), "chat_input": "test"},  # snake_case
+            {"message": "test", "sessionId": str(uuid.uuid4())},  # order khác
+            {"prompt": "test"},  # minimal payload
+            {}  # empty payload
+        ]
+        
+        if st.button("Test payloads"):
+            for i, test_payload in enumerate(test_payloads):
+                st.write(f"**Payload {i+1}:**")
+                st.json(test_payload)
+                try:
+                    resp = requests.post(
+                        webhook_url, 
+                        json=test_payload, 
+                        headers={"Authorization": f"Bearer {bearer_token}", "Content-Type": "application/json"}, 
+                        timeout=10
+                    )
+                    st.write(f"Status: {resp.status_code}")
+                    if resp.status_code != 403:
+                        st.success(f"✅ Payload {i+1} hoạt động!")
+                except Exception as e:
+                    st.write(f"Error: {e}")
+    
+    with st.expander("4. Test endpoint availability"):
+        if st.button("Ping endpoint"):
+            try:
+                # Test basic connectivity
+                resp = requests.get("https://sxdqt.com.vn/", timeout=10)
+                st.write(f"Main site status: {resp.status_code}")
+                
+                # Test webhook endpoint với GET
+                resp = requests.get(webhook_url, timeout=10)
+                st.write(f"Webhook GET status: {resp.status_code}")
+                
+                # Test với OPTIONS (CORS preflight)
+                resp = requests.options(webhook_url, timeout=10)
+                st.write(f"OPTIONS status: {resp.status_code}")
+                
+            except Exception as e:
+                st.error(f"Connection error: {e}")
+                
+    with st.expander("5. Liên hệ Admin"):
+        st.write("""
+        Nếu tất cả các cách trên đều không được:
+        - Liên hệ admin của sxdqt.com.vn
+        - Kiểm tra xem có thông báo maintenance không
+        - Xác nhận API endpoint và token còn active
+        - Yêu cầu whitelist IP (nếu cần)
+        """)
+
+def main():
+    st.set_page_config(page_title="Debug 403 Error", page_icon="🔍")
+    debug_request()
 
 if __name__ == "__main__":
     main()
